@@ -43,7 +43,7 @@ df_soil = render_soil_editor()
 st.subheader("📏 水泥土墙几何与材料参数")
 col1, col2, col3 = st.columns(3)
 wall_b = col1.number_input("水泥土墙厚度 b (m)", value=3.0, step=0.10)
-f_cs = col2.number_input("轴心抗压强度设计值 fcs (kPa)", value=1000.0, step=100.0)
+f_cs = col2.number_input("轴心抗压强度设计值 fcs (kPa)", value=400.0, step=100.0)
 gamma_cs = col3.number_input("水泥土平均重度 γcs (kN/m³)", value=19.0, step=0.5)
 
 def draw_pit_profile(fig, layer_stats, L, row=None, col=None, x_max=12):
