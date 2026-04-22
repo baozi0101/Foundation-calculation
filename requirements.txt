@@ -3,3 +3,5 @@ pandas
 numpy<2.0.2
 plotly
 scipy
+docxtpl
+kaleido==0.2.1
