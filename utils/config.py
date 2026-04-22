@@ -4,7 +4,8 @@ import pandas as pd
 # ================= 1. 全局默认基坑参数 =================
 DEFAULT_PIT_PARAMS = {
     'H0': 6.15,   
-    'zw': 20.0,   
+    'zw_out': 20.0,  # <--- 【修改点】：地下水位改为坑外水位
+    'zw_in': 15.0,    # <--- 【修改点】：增加坑内水位，默认20
     'q': 20.0,   
     'hd': 7.35,
     'safety_level': '二级'  # 新增安全等级默认值    
@@ -33,8 +34,10 @@ def init_global_state():
     # 【修复点】：变量名已经去掉了 global_ 前缀，与页面代码严格对应
     if 'H0' not in st.session_state: 
         st.session_state.H0 = DEFAULT_PIT_PARAMS['H0']
-    if 'zw' not in st.session_state: 
-        st.session_state.zw = DEFAULT_PIT_PARAMS['zw']
+    if 'zw_out' not in st.session_state:  # <--- 【修改点】
+        st.session_state.zw_out = DEFAULT_PIT_PARAMS['zw_out']
+    if 'zw_in' not in st.session_state:   # <--- 【修改点】
+        st.session_state.zw_in = DEFAULT_PIT_PARAMS['zw_in']
     if 'q' not in st.session_state: 
         st.session_state.q = DEFAULT_PIT_PARAMS['q']
     if 'hd' not in st.session_state: 
@@ -45,6 +48,13 @@ def init_global_state():
     # 土层表格数据比较特殊，保持原名
     if 'global_soil_df' not in st.session_state:
         st.session_state.global_soil_df = pd.DataFrame(DEFAULT_SOIL_DATA)
-        
+    else:
+        # 如果缺列，或者所有值都被防错机制填成了 40.0，则重置为阶梯值
+        df = st.session_state.global_soil_df
+        if '极限粘结强度(kPa)' not in df.columns or (df['极限粘结强度(kPa)'] == 40.0).all():
+            default_qsik = DEFAULT_SOIL_DATA['极限粘结强度(kPa)']
+            # 按照当前表格的行数动态赋值
+            df['极限粘结强度(kPa)'] = [default_qsik[i] if i < len(default_qsik) else 40.0 for i in range(len(df))]
+            st.session_state.global_soil_df = df
     if 'selected_layer' not in st.session_state: 
         st.session_state.selected_layer = None

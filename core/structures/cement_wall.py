@@ -7,7 +7,8 @@ class CementSoilWall:
         self.f_cs = f_cs       # 水泥土轴心抗压强度设计值 (kPa)
         self.gamma_cs = gamma_cs # 水泥土平均重度 (kN/m³)
 
-    def calc_stability(self, calc_df: pd.DataFrame, H0: float, hd: float, zw: float, layer_stats: list):
+    # <--- 【修改点】：传参由 zw 变为 zw_out 和 zw_in
+    def calc_stability(self, calc_df: pd.DataFrame, H0: float, hd: float, zw_out: float, zw_in: float, layer_stats: list):
         """计算整体抗倾覆 (Kov) 和抗滑移 (Ksl) 稳定性"""
         L = H0 + hd
         df = calc_df[calc_df['z'] <= L + 0.01].copy()
@@ -32,8 +33,8 @@ class CementSoilWall:
         aG = self.b / 2.0
 
         # 墙底水压力 um (按规范取内外水位平均值)
-        hwa = max(0, L - zw)
-        hwp = max(0, L - max(H0, zw))
+        hwa = max(0, L - zw_out)             # <--- 【修改点】：坑外水头，从坑外水位算起
+        hwp = max(0, L - (H0 + zw_in))       # <--- 【修改点】：坑内水头，从坑底+坑内水位算起
         um = 10.0 * (hwa + hwp) / 2.0 if (hwa > 0 or hwp > 0) else 0.0
 
         # 获取基底土层参数

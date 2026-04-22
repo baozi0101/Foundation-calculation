@@ -3,7 +3,8 @@ import pandas as pd
 import streamlit as st
 
 @st.cache_data
-def calculate_earth_pressure(df, H0, zw, q, gamma_w=10.0):
+# <--- 【修改点】：将参数 zw 改为 zw_out，并新增参数 zw_in
+def calculate_earth_pressure(df, H0, zw_out, zw_in, q, gamma_w=10.0):
     df = df.copy()
     df['层底深度(m)'] = df['厚度(m)'].cumsum()
     
@@ -13,6 +14,9 @@ def calculate_earth_pressure(df, H0, zw, q, gamma_w=10.0):
     sigma_v_act = q
     sigma_v_pas = 0
     top_z = 0
+    
+    # <--- 【修改点】：计算坑内水位的绝对深度（从地表算起）
+    abs_zw_in = H0 + zw_in
     
     for idx, row in df.iterrows():
         bot_z = row['层底深度(m)']
@@ -26,8 +30,9 @@ def calculate_earth_pressure(df, H0, zw, q, gamma_w=10.0):
         Kp = np.tan(np.radians(45 + phi/2))**2
         
         layer_nodes = [top_z, bot_z]
-        if top_z < zw < bot_z: layer_nodes.append(zw)
+        if top_z < zw_out < bot_z: layer_nodes.append(zw_out)    # <--- 【修改点】：主动区水位节点
         if top_z < H0 < bot_z: layer_nodes.append(H0)
+        if top_z < abs_zw_in < bot_z: layer_nodes.append(abs_zw_in) # <--- 【修改点】：被动区水位节点
         
         step_nodes = np.arange(top_z, bot_z + 0.05, 0.05)
         layer_depths = np.unique(np.sort(np.append(step_nodes, layer_nodes)))
@@ -38,25 +43,35 @@ def calculate_earth_pressure(df, H0, zw, q, gamma_w=10.0):
             dz = z - layer_depths[i-1] if i > 0 else 0
             
             if mode == '水土分算':
-                gamma_calc = gamma_nat if (z - dz/2) <= zw else (gamma_sat - gamma_w)
-                u = max(0, (z - zw) * gamma_w)
-            else:
-                gamma_calc = gamma_nat if (z - dz/2) <= zw else gamma_sat
-                u = 0
+                # <--- 【修改点】：完全分离主动区和被动区的重度和水压计算
+                # 主动区（坑外）：受 zw_out 控制
+                gamma_calc_act = gamma_nat if (z - dz/2) <= zw_out else (gamma_sat - gamma_w)
+                u_act = max(0, (z - zw_out) * gamma_w)
                 
-            sigma_v_act += gamma_calc * dz
+                # 被动区（坑内）：受 abs_zw_in 控制
+                gamma_calc_pas = gamma_nat if (z - dz/2) <= abs_zw_in else (gamma_sat - gamma_w)
+                u_pas = max(0, (z - abs_zw_in) * gamma_w)
+            else:
+                gamma_calc_act = gamma_nat if (z - dz/2) <= zw_out else gamma_sat
+                u_act = 0
+                
+                gamma_calc_pas = gamma_nat if (z - dz/2) <= abs_zw_in else gamma_sat
+                u_pas = 0
+                
+            sigma_v_act += gamma_calc_act * dz
             if (z - dz/2) > H0:
-                sigma_v_pas += gamma_calc * dz
+                sigma_v_pas += gamma_calc_pas * dz
                 
             ea_soil = sigma_v_act * Ka - 2 * c * np.sqrt(Ka)
-            ea = max(0, ea_soil) + u
+            ea = max(0, ea_soil) + u_act
             
-            # 被动土压力仅在基坑底及以下产生
-            ep = (sigma_v_pas * Kp + 2 * c * np.sqrt(Kp)) + u if z >= H0 else 0
+            # <--- 【修改点】：被动土压力计算使用独立的坑内水压力 u_pas
+            ep = (sigma_v_pas * Kp + 2 * c * np.sqrt(Kp)) + u_pas if z >= H0 else 0
             
             row_dict = {
                 'z': z, 'layer_id': row['地层编号'], 'layer_name': row['土层名称'],
-                'sigma_a': sigma_v_act, 'sigma_p': sigma_v_pas, 'u': u,
+                'sigma_a': sigma_v_act, 'sigma_p': sigma_v_pas, 
+                'u': u_act, 'u_pas': u_pas,  # <--- 【修改点】：单独存储 u_pas 供被动区信息提取
                 'Ka': Ka, 'Kp': Kp, 'ea': ea, 'ep': ep,
                 'ea_soil_uncapped': ea_soil
             }
@@ -93,8 +108,8 @@ def calculate_earth_pressure(df, H0, zw, q, gamma_w=10.0):
             
             sigma_p_top = df_pas['sigma_p'].iloc[0]
             sigma_p_bot = df_pas['sigma_p'].iloc[-1]
-            u_p_top = df_pas['u'].iloc[0]
-            u_p_bot = df_pas['u'].iloc[-1]
+            u_p_top = df_pas['u_pas'].iloc[0]  # <--- 【修改点】：读取被动区专属的水压力
+            u_p_bot = df_pas['u_pas'].iloc[-1] # <--- 【修改点】：读取被动区专属的水压力
             ep_top = df_pas['ep'].iloc[0]
             ep_bot = df_pas['ep'].iloc[-1]
             dz_p = bot_z - df_pas['z'].iloc[0] # 被动区的实际厚度
