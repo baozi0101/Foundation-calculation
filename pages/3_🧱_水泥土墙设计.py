@@ -19,13 +19,16 @@ with st.sidebar:
     st.header("⚙️ 基坑参数")
     st.session_state.safety_level = st.selectbox("基坑安全等级", options=["一级", "二级", "三级"], index=["一级", "二级", "三级"].index(st.session_state.safety_level))
     st.session_state.H0 = st.number_input("基坑深度 h (m)", value=st.session_state.H0, step=0.5)
-    st.session_state.zw = st.number_input("地下水位 zw (m)", value=st.session_state.zw, step=0.5)
+    # <--- 【修改点】：修改及新增水位UI参数
+    st.session_state.zw_out = st.number_input("坑外水位 zw_out (m)", value=st.session_state.zw_out, step=0.5)
+    st.session_state.zw_in = st.number_input("坑内水位 zw_in (m)", value=st.session_state.zw_in, step=0.5, min_value=0.0)
     st.session_state.q = st.number_input("地表超载 q (kPa)", value=st.session_state.q, step=5.0)
     st.divider()
     st.session_state.hd = st.number_input("初始嵌固深度 hd (m)", value=st.session_state.hd, step=0.1)
 
     H0 = st.session_state.H0
-    zw = st.session_state.zw
+    zw_out = st.session_state.zw_out # <--- 【修改点】
+    zw_in = st.session_state.zw_in   # <--- 【修改点】
     q = st.session_state.q
     hd = st.session_state.hd
     safety_level = st.session_state.safety_level
@@ -43,7 +46,7 @@ df_soil = render_soil_editor()
 st.subheader("📏 水泥土墙几何与材料参数")
 col1, col2, col3 = st.columns(3)
 wall_b = col1.number_input("水泥土墙厚度 b (m)", value=3.0, step=0.10)
-f_cs = col2.number_input("轴心抗压强度设计值 fcs (kPa)", value=500.0, step=100.0)
+f_cs = col2.number_input("轴心抗压强度设计值 fcs (kPa)", value=400.0, step=100.0)
 gamma_cs = col3.number_input("水泥土平均重度 γcs (kN/m³)", value=19.0, step=0.5)
 
 def draw_pit_profile(fig, layer_stats, L, row=None, col=None, x_max=12):
@@ -69,10 +72,12 @@ def draw_pit_profile(fig, layer_stats, L, row=None, col=None, x_max=12):
 
 # ================= 2. 核心计算 =================
 if not df_soil.empty:
-    calc_df, layer_stats = calculate_earth_pressure(df_soil, H0, zw, q)
+    # <--- 【修改点】：传入 zw_out 和 zw_in
+    calc_df, layer_stats = calculate_earth_pressure(df_soil, H0, zw_out, zw_in, q)
     wall = CementSoilWall(b=wall_b, f_cs=f_cs, gamma_cs=gamma_cs)
     
-    stab_res = wall.calc_stability(calc_df, H0, hd, zw, layer_stats)
+    # <--- 【修改点】：传入 zw_out 和 zw_in 到稳定性计算中
+    stab_res = wall.calc_stability(calc_df, H0, hd, zw_out, zw_in, layer_stats)
     stress_res = wall.calc_section_stress(calc_df, H0, hd, gamma0=factors['gamma0'])
     heave_res = wall.calc_heave_stability(H0, hd, q, layer_stats)
     gs_res = wall.calc_global_stability(H0, hd, q, layer_stats)

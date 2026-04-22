@@ -20,11 +20,14 @@ with st.sidebar:
     st.header("⚙️ 基坑参数")
     st.session_state.safety_level = st.selectbox("基坑安全等级", options=["一级", "二级", "三级"], index=["一级", "二级", "三级"].index(st.session_state.safety_level))
     st.session_state.H0 = st.number_input("基坑深度 h (m)", value=st.session_state.H0, step=0.5)
-    st.session_state.zw = st.number_input("地下水位 zw (m)", value=st.session_state.zw, step=0.5)
+    # <--- 【修改点】：修改及新增水位UI参数
+    st.session_state.zw_out = st.number_input("坑外水位 zw_out (m)", value=st.session_state.zw_out, step=0.5)
+    st.session_state.zw_in = st.number_input("坑内水位 zw_in (m)", value=st.session_state.zw_in, step=0.5, min_value=0.0)
     st.session_state.q = st.number_input("地表超载 q (kPa)", value=st.session_state.q, step=5.0)
 
     H0 = st.session_state.H0
-    zw = st.session_state.zw
+    zw_out = st.session_state.zw_out # <--- 【修改点】
+    zw_in = st.session_state.zw_in   # <--- 【修改点】
     q = st.session_state.q
     safety_level = st.session_state.safety_level
 
@@ -88,7 +91,8 @@ def draw_nail_profile(fig, layer_stats, L, nail_df, x_max=12):
 
 # ================= 2. 核心计算 =================
 if not df_soil.empty:
-    calc_df, layer_stats = calculate_earth_pressure(df_soil, H0, zw, q)
+    # <--- 【修改点】：传入 zw_out 和 zw_in
+    calc_df, layer_stats = calculate_earth_pressure(df_soil, H0, zw_out, zw_in, q)
     fc_val = 9.6 if conc_grade == "C20" else 11.9
     fy_val = STEEL_PROPERTIES[steel_grade]['f_y']
     
@@ -116,7 +120,6 @@ if not df_soil.empty:
                 st.markdown(f"**👉 第 {j} 层土钉 (深度 {row['深度 z (m)']} m)**：")
                 st.latex(f"N_{{k,{j}}} = \\frac{{1}}{{\\cos({nail_alpha}^\\circ)}} \\times 1.0 \\times 1.0 \\times {row['ea (kPa)']} \\times {nail_Sx} \\times {nail_Sz} = {row['拉力 Nk (kN)']} \\text{{ kN}}")
                 
-                # 【修复点】：完美处理多土层分段抗拔计算的 LaTeX 显示
                 if row['有效长 Lout (m)'] <= 0:
                     st.latex(f"R_{{k,{j}}} = 0 \\text{{ kN (未能穿透破裂面)}}")
                 else:
@@ -126,7 +129,6 @@ if not df_soil.empty:
             
             st.divider()
             st.markdown("**【全抗拔力验算汇总表】**")
-            # 【修复点】：移除不存在的 qsik 字段，采用精准格式化避免报错
             format_dict = {"ea (kPa)": "{:.2f}", "拉力 Nk (kN)": "{:.2f}", "有效长 Lout (m)": "{:.2f}", "抗拔 Rk (kN)": "{:.2f}", "Kt": "{:.2f}"}
             st.dataframe(nail_res_df.style.format(format_dict), use_container_width=True)
             
@@ -155,7 +157,7 @@ if not df_soil.empty:
             
             df_slices = pd.DataFrame(gs_res['slices_data'])
             if not df_slices.empty:
-                st.dataframe(df_slices.style.format({"x_mid (m)": "{:.2f}", "厚度 h (m)": "{:.2f}", "倾角 θ (°)": "{:.2f}", "弧长 l (m)": "{:.2f}", "自重+超载 (kN/m)": "{:.2f}", "抗滑力 (kN/m)": "{:.2f}", "下滑力 (kN/m)": "{:.2f}"}), height=250)
+                st.dataframe(df_slices.style.format({"x_mid (m)": "{:.2f}", "厚度 h (m)": "{:.2f}", "倾角 θ (°)", "弧长 l (m)": "{:.2f}", "自重+超载 (kN/m)": "{:.2f}", "抗滑力 (kN/m)": "{:.2f}", "下滑力 (kN/m)": "{:.2f}"}), height=250)
                 
                 mid_idx = len(df_slices) // 2
                 mid_row = df_slices.iloc[mid_idx]

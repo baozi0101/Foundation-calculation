@@ -1,9 +1,16 @@
 import streamlit as st
 import plotly.graph_objects as go
+import os
+import pandas as pd
 
 from components.inputs import render_soil_editor
 from core.soil_mechanics import calculate_earth_pressure
 from utils.config import init_global_state
+
+# 尝试导入我们之前写好的商业级导出引擎
+
+from utils.exporter import generate_docxtpl_report
+HAS_EXPORTER = True
 
 st.set_page_config(page_title="土压力计算", layout="wide")
 
@@ -16,11 +23,13 @@ st.title("📊 朗肯土压力交互式计算模块")
 with st.sidebar:
     st.header("⚙️ 基坑与环境参数")
     st.session_state.H0 = st.number_input("基坑深度 H0 (m)", value=st.session_state.H0, step=0.5)
-    st.session_state.zw = st.number_input("地下水位 zw (m)", value=st.session_state.zw, step=0.5)
+    st.session_state.zw_out = st.number_input("坑外水位 zw_out (m)", value=st.session_state.zw_out, step=0.5)
+    st.session_state.zw_in = st.number_input("坑内水位 zw_in (m)", value=st.session_state.zw_in, step=0.5, min_value=0.0)
     st.session_state.q = st.number_input("地表超载 q (kPa)", value=st.session_state.q, step=5.0)
     
     H0 = st.session_state.H0
-    zw = st.session_state.zw
+    zw_out = st.session_state.zw_out 
+    zw_in = st.session_state.zw_in   
     q = st.session_state.q
 
 # ================= 3. 获取全局土层数据 =================
@@ -28,7 +37,7 @@ df_soil = render_soil_editor()
 
 # ================= 4. 核心计算与图表渲染 =================
 if not df_soil.empty:
-    calc_df, layer_stats = calculate_earth_pressure(df_soil, H0, zw, q)
+    calc_df, layer_stats = calculate_earth_pressure(df_soil, H0, zw_out, zw_in, q)
 
     st.markdown("---")
     col_chart, col_process = st.columns([1.2, 1])
@@ -37,7 +46,6 @@ if not df_soil.empty:
         st.subheader("🧮 分层计算过程展示")
         
         for stat in layer_stats:
-            # 【修复点】：在这里对 top 和 bot 强制保留两位小数
             with st.expander(f"📌 {stat['layer_id']} {stat['name']} (深度 {stat['top']:.2f}m ~ {stat['bot']:.2f}m)", expanded=False):
                 st.markdown(f"**【本层物理力学参数】**\n"
                             f"* $\\gamma = {stat['gamma_nat']}$ kN/m³ (天然) | $\\gamma_{{sat}} = {stat['gamma_sat']}$ kN/m³ (饱和)\n"
@@ -50,8 +58,8 @@ if not df_soil.empty:
                 if stat['mode'] == '水土分算':
                     st.markdown("**(1) 孔隙水压力计算 (水土分算)**")
                     if stat['u_bot'] > 0:
-                        st.latex(f"u_{{top}} = \\max(0, \\gamma_w (z_{{top}} - z_w)) = {stat['u_top']:.2f} \\text{{ kPa}}")
-                        st.latex(f"u_{{bot}} = \\max(0, \\gamma_w (z_{{bot}} - z_w)) = {stat['u_bot']:.2f} \\text{{ kPa}}")
+                        st.latex(f"u_{{top}} = \\max(0, \\gamma_w (z_{{top}} - z_{{w,out}})) = {stat['u_top']:.2f} \\text{{ kPa}}")
+                        st.latex(f"u_{{bot}} = \\max(0, \\gamma_w (z_{{bot}} - z_{{w,out}})) = {stat['u_bot']:.2f} \\text{{ kPa}}")
                     else:
                         st.latex("u = 0 \\text{ kPa (位于水位以上)}")
                 else:
@@ -156,7 +164,10 @@ if not df_soil.empty:
         ))
 
         fig.add_hline(y=H0, line_dash="dash", line_color="green", line_width=2, annotation_text=f"基坑底 H={H0}m", annotation_position="bottom left")
-        fig.add_hline(y=zw, line_dash="dashdot", line_color="blue", annotation_text=f"地下水 zw={zw}m", annotation_position="bottom right")
+        
+        fig.add_hline(y=zw_out, line_dash="dashdot", line_color="blue", annotation_text=f"坑外水位={zw_out}m", annotation_position="bottom right")
+        fig.add_hline(y=H0 + zw_in, line_dash="dashdot", line_color="cyan", annotation_text=f"坑内水位={zw_in}m", annotation_position="top left")
+        
         fig.add_vline(x=0, line_color="black", line_width=2)
 
         hl_id = st.session_state.selected_layer
@@ -179,3 +190,65 @@ if not df_soil.empty:
         if st.button("🔄 清除图表上的合力标注"):
             st.session_state.selected_layer = None
             st.rerun()
+
+    # ================= 5. Word 计算书导出 =================
+    if HAS_EXPORTER:
+        st.divider()
+        st.subheader("📥 导出计算书")
+        
+        # 组装动态土层详细计算过程数据
+        export_layers = []
+        for stat in layer_stats:
+            export_layers.append({
+                'layer_id': stat['layer_id'],
+                'name': stat['name'],
+                'top': f"{stat['top']:.2f}",
+                'bot': f"{stat['bot']:.2f}",
+                'gamma': f"{stat['gamma_nat']:.2f}",
+                'gamma_sat': f"{stat['gamma_sat']:.2f}",
+                'c': f"{stat['c']:.2f}",
+                'phi': f"{stat['phi']:.2f}",
+                'mode': stat['mode'],
+                'u_top': f"{stat['u_top']:.2f}",
+                'u_bot': f"{stat['u_bot']:.2f}",
+                'Ka': f"{stat['Ka']:.3f}",
+                'ea_top': f"{stat['ea_top']:.2f}",
+                'ea_bot': f"{stat['ea_bot']:.2f}",
+                'Ea': f"{stat['Ea']:.2f}",
+                'za': f"{stat['za']:.2f}" if stat['Ea'] > 0 else "-",
+                'Kp': f"{stat['Kp']:.3f}",
+                'ep_top': f"{stat['ep_top']:.2f}",
+                'ep_bot': f"{stat['ep_bot']:.2f}",
+                'Ep': f"{stat['Ep']:.2f}",
+                'zp': f"{stat['zp']:.2f}" if stat['Ep'] > 0 else "-"
+            })
+
+        if st.button("📄 基于模板生成", type="primary", use_container_width=True):
+            with st.spinner("正在将数据填入模板,请稍候..."):
+                context_data = {
+                    "H0": f"{H0:.2f}",
+                    "zw_out": f"{zw_out:.2f}",
+                    "zw_in": f"{zw_in:.2f}",
+                    "q": f"{q:.2f}",
+                    "layer_details": export_layers # <--- 把打包好的列表传给 Jinja2 引擎
+                }
+                
+                template_file = "templates/soil_pressure_template.docx"
+                
+                if not os.path.exists(template_file):
+                    st.error(f"找不到模板文件：{template_file}，请先在本地 templates 文件夹下创建！")
+                else:
+                    # 调用模板引擎，df_table 传空的，主要通过 context_data 循环
+                    word_buffer = generate_docxtpl_report(
+                        template_path=template_file,
+                        context=context_data,
+                        df_table=pd.DataFrame(), 
+                        fig=fig
+                    )
+                    
+                    st.download_button(
+                        label="✅ 计算书已生成！点击下载 .docx 文件",
+                        data=word_buffer,
+                        file_name="土压力分布计算书.docx",
+                        mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                    )

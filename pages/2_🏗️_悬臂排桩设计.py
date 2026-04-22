@@ -20,13 +20,16 @@ with st.sidebar:
     st.header("⚙️ 基坑参数")
     st.session_state.safety_level = st.selectbox("基坑安全等级", options=["一级", "二级", "三级"], index=["一级", "二级", "三级"].index(st.session_state.safety_level))
     st.session_state.H0 = st.number_input("基坑深度 h (m)", value=st.session_state.H0, step=0.5)
-    st.session_state.zw = st.number_input("地下水位 zw (m)", value=st.session_state.zw, step=0.5)
+    # <--- 【修改点】：修改及新增水位UI参数
+    st.session_state.zw_out = st.number_input("坑外水位 zw_out (m)", value=st.session_state.zw_out, step=0.5)
+    st.session_state.zw_in = st.number_input("坑内水位 zw_in (m)", value=st.session_state.zw_in, step=0.5, min_value=0.0)
     st.session_state.q = st.number_input("地表超载 q (kPa)", value=st.session_state.q, step=5.0)
     st.divider()
     st.session_state.hd = st.number_input("初始嵌固深度 hd (m)", value=st.session_state.hd, step=0.1)
 
     H0 = st.session_state.H0
-    zw = st.session_state.zw
+    zw_out = st.session_state.zw_out # <--- 【修改点】
+    zw_in = st.session_state.zw_in   # <--- 【修改点】
     q = st.session_state.q
     hd = st.session_state.hd
     safety_level = st.session_state.safety_level
@@ -70,7 +73,8 @@ def draw_pit_profile(fig, layer_stats, L, row=None, col=None, x_max=12):
 
 # ================= 2. 核心计算 =================
 if not df_soil.empty:
-    calc_df, layer_stats = calculate_earth_pressure(df_soil, H0, zw, q)
+    # <--- 【修改点】：传入 zw_out 和 zw_in
+    calc_df, layer_stats = calculate_earth_pressure(df_soil, H0, zw_out, zw_in, q)
     pile = RetainingPile(pile_d, pile_s, conc_grade, steel_grade)
     
     forces_df, M_max, V_max, z_zero_shear, v_str, m_str = pile.calc_internal_forces(calc_df, H0, hd)
