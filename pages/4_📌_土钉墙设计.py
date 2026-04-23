@@ -157,7 +157,7 @@ if not df_soil.empty:
             
             df_slices = pd.DataFrame(gs_res['slices_data'])
             if not df_slices.empty:
-                st.dataframe(df_slices.style.format({"x_mid (m)": "{:.2f}", "厚度 h (m)": "{:.2f}", "倾角 θ (°)", "弧长 l (m)": "{:.2f}", "自重+超载 (kN/m)": "{:.2f}", "抗滑力 (kN/m)": "{:.2f}", "下滑力 (kN/m)": "{:.2f}"}), height=250)
+                st.dataframe(df_slices.style.format({"x_mid (m)": "{:.2f}", "厚度 h (m)": "{:.2f}", "倾角 θ (°)": "{:.2f}", "弧长 l (m)": "{:.2f}", "自重+超载 (kN/m)": "{:.2f}", "抗滑力 (kN/m)": "{:.2f}", "下滑力 (kN/m)": "{:.2f}"}), height=250)
                 
                 mid_idx = len(df_slices) // 2
                 mid_row = df_slices.iloc[mid_idx]
