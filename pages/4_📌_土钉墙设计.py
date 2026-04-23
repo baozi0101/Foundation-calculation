@@ -234,3 +234,89 @@ if not df_soil.empty:
         fig2.update_layout(height=400, xaxis_title="面层水平跨度 X (m)", yaxis_title="深度 Z (m)", margin=dict(l=10, r=10, t=10, b=10))
         fig2.update_yaxes(autorange="reversed", range=[H0, 0])
         st.plotly_chart(fig2, use_container_width=True)
+        # ================= 3. Word 计算书导出 =================
+    import os
+    try:
+        from utils.exporter import generate_docxtpl_report
+        HAS_EXPORTER = True
+    except ImportError:
+        HAS_EXPORTER = False
+
+    if HAS_EXPORTER:
+        st.divider()
+        st.subheader("📥 导出计算书")
+        
+        # 专门为 Word 清洗 LaTeX 符号的工具函数
+        def clean_for_word(text):
+            if not isinstance(text, str): 
+                return text
+            # 替换乘号，去掉 LaTeX 强制换行与缩进符，改为普通加减号让 Word 自动换行
+            return text.replace("\\times", "×") \
+                       .replace(" \\\\ &\\quad + ", " + ") \
+                       .replace(" \\\\ &\\quad - ", " - ") \
+                       .replace("\\\\", "") \
+                       .replace("&\\quad", "")
+
+        if st.button("📄 基于模板生成精细计算书", type="primary", use_container_width=True):
+            with st.spinner("正在将公式与计算数据填入模板，并渲染高清图表，请稍候..."):
+                # 1. 组装全部中间过程变量字典
+                context_data = {
+                    "safety_level": clean_for_word(safety_level),
+                    "H0": f"{H0:.2f}",
+                    "q": f"{q:.2f}",
+                    "nail_Sx": f"{nail_Sx:.2f}",
+                    "nail_Sz": f"{nail_Sz:.2f}",
+                    "nail_alpha": f"{nail_alpha:.1f}",
+                    "nail_d": f"{nail_d * 1000:.0f}",
+                    
+                    # 步骤一：抗拔验算汇总
+                    "Kt_limit": f"{factors['Kt']:.2f}",
+                    "min_Kt": f"{nail_res_df['Kt'].min():.2f}",
+                    "Kt_conclusion": "满足要求" if nail_res_df['Kt'].min() >= factors['Kt'] else "抗拔承载力不足",
+                    
+                    # 步骤二：面层承载力
+                    "Nk_max": f"{nail_res_df['拉力 Nk (kN)'].max():.1f}",
+                    "face_p": f"{face_res['p']:.1f}",
+                    "face_M": f"{face_res['M']:.2f}",
+                    "alpha_s": f"{face_res['alpha_s']:.3f}",
+                    "face_As": f"{face_res['As']:.0f}",
+                    "face_As_min": f"{face_res['As_min']:.0f}",
+                    
+                    # 步骤三：整体稳定性
+                    "Ks_limit": f"{factors['Ks']:.2f}",
+                    "xc": f"{gs_res['xc']:.1f}",
+                    "zc": f"{gs_res['zc']:.1f}",
+                    "R": f"{gs_res['R']:.1f}",
+                    "b_slice": f"{gs_res['b_slice']:.2f}",
+                    "M_resist_soil": f"{gs_res['M_resist_soil']:.1f}",
+                    "M_resist_nail": f"{gs_res['M_resist_nail']:.1f}",
+                    "M_resist_total": f"{gs_res['M_resist_soil'] + gs_res['M_resist_nail']:.1f}",
+                    "M_drive": f"{gs_res['M_drive']:.1f}",
+                    "Ks_calc": f"{gs_res['Ks']:.3f}",
+                    "Ks_conclusion": "满足要求" if gs_res['Ks'] >= factors['Ks'] else "整体稳定性不足"
+                }
+                
+                # 2. 装载表格与图表
+                # 注意：土钉参数表由 exporter.py 的 df_table 自动处理，条分表通过 tables 字典传递
+                tables_to_export = {"slice_table": pd.DataFrame(gs_res['slices_data'])}
+                figs_to_export = {"plot_profile": fig, "plot_facing": fig2}
+                
+                template_file = "templates/soil_nail_template.docx"
+                
+                if not os.path.exists(template_file):
+                    st.error(f"找不到模板文件：{template_file}，请先在本地 templates 文件夹下创建！")
+                else:
+                    word_buffer = generate_docxtpl_report(
+                        template_path=template_file,
+                        context=context_data,
+                        df_table=nail_res_df,  # 传递给基础的 nail_table
+                        tables=tables_to_export,
+                        figs=figs_to_export
+                    )
+                    
+                    st.download_button(
+                        label="✅ 计算书已生成！点击下载 .docx 文件",
+                        data=word_buffer,
+                        file_name=f"土钉墙详细计算书_H{H0}m.docx",
+                        mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                    )
