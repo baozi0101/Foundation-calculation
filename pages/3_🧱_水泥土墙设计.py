@@ -235,3 +235,119 @@ if not df_soil.empty:
         z_top_limit = min(-2, gs_res['zc'] - 2)
         fig3.update_yaxes(autorange="reversed", range=[L + 5, z_top_limit])
         st.plotly_chart(fig3, use_container_width=True)
+        # ================= 3. Word 计算书导出 =================
+    import os
+    try:
+        from utils.exporter import generate_docxtpl_report
+        HAS_EXPORTER = True
+    except ImportError:
+        HAS_EXPORTER = False
+
+    if HAS_EXPORTER:
+        st.divider()
+        st.subheader("📥 导出计算书")
+        
+        # 专门为 Word 清洗 LaTeX 符号的工具函数
+        def clean_for_word(text):
+            if not isinstance(text, str): 
+                return text
+            # 替换乘号，去掉 LaTeX 强制换行与缩进符，改为普通加减号让 Word 自动换行
+            return text.replace("\\times", "×") \
+                       .replace(" \\\\ &\\quad + ", " + ") \
+                       .replace(" \\\\ &\\quad - ", " - ") \
+                       .replace("\\\\", "") \
+                       .replace("&\\quad", "")
+
+        if st.button("📄 基于模板生成计算书", type="primary", use_container_width=True):
+            with st.spinner("正在将公式与计算数据填入模板，并渲染高清图表，请稍候..."):
+                # 1. 组装全部中间过程变量字典
+                context_data = {
+                    "safety_level": clean_for_word(safety_level),
+                    "gamma0": f"{factors['gamma0']:.2f}",
+                    "H0": f"{H0:.2f}",
+                    "hd": f"{hd:.2f}",
+                    "L_total": f"{H0 + hd:.2f}",
+                    "wall_b": f"{wall_b:.2f}",
+                    "f_cs": f"{f_cs:.1f}",
+                    "gamma_cs": f"{gamma_cs:.1f}",
+                    
+                    # 抗倾覆
+                    "Eak": f"{stab_res['Eak']:.1f}",
+                    "aa": f"{stab_res['aa']:.2f}",
+                    "Epk": f"{stab_res['Epk']:.1f}",
+                    "ap": f"{stab_res['ap']:.2f}",
+                    "G": f"{stab_res['G']:.1f}",
+                    "um": f"{stab_res['um']:.1f}",
+                    "Kov": f"{stab_res['Kov']:.3f}",
+                    "Kov_conclusion": "满足规范" if stab_res['Kov'] >= 1.30 else "不满足规范",
+                    
+                    # 抗滑移
+                    "c_base": f"{stab_res['c']}",
+                    "phi_base": f"{stab_res['phi']}",
+                    "Ksl": f"{stab_res['Ksl']:.3f}",
+                    "Ksl_conclusion": "满足规范" if stab_res['Ksl'] >= 1.20 else "不满足规范",
+                    
+                    # 截面应力
+                    "z_M": f"{stress_res['z_M']:.2f}",
+                    "Mk_max": f"{stress_res['Mk_max']:.1f}",
+                    "Mi": f"{stress_res['Mi']:.1f}",
+                    "sigma_c": f"{stress_res['sigma_c']:.1f}",
+                    "sigma_c_check": "满足要求" if stress_res['sigma_c'] <= f_cs else "不满足要求",
+                    "sigma_t": f"{stress_res['sigma_t']:.1f}",
+                    "limit_t": f"{0.15 * f_cs:.1f}",
+                    "sigma_t_check": "满足要求" if stress_res['sigma_t'] <= 0.15 * f_cs else "不满足要求",
+                    "z_V": f"{stress_res['z_V']:.2f}",
+                    "Vk_max": f"{stress_res['Vk_max']:.1f}",
+                    "Vi": f"{stress_res['Vi']:.1f}",
+                    "Gi": f"{stress_res['Gi']:.1f}",
+                    "mu": f"{stress_res['mu']}",
+                    "tau": f"{stress_res['tau']:.1f}",
+                    "limit_v": f"{f_cs / 6.0:.1f}",
+                    "tau_check": "满足要求" if stress_res['tau'] <= f_cs / 6.0 else "不满足要求",
+                    
+                    # 抗隆起
+                    "Khe_limit": f"{factors['Khe']:.2f}",
+                    "Nq": f"{heave_res['Nq']:.2f}",
+                    "Nc": f"{heave_res['Nc']:.2f}",
+                    "gamma_bot": f"{heave_res['gamma_bot']:.1f}",
+                    "c_bot": f"{heave_res['c']}",
+                    "p_res": f"{heave_res['p_res']:.1f}",
+                    "gamma_top_avg": f"{heave_res['gamma_top_avg']:.1f}",
+                    "q": f"{q}",
+                    "p_act": f"{heave_res['p_act']:.1f}",
+                    "Kl": f"{heave_res['Kl']:.3f}",
+                    "Khe_conclusion": "满足规范" if heave_res['Kl'] >= factors['Khe'] else "不满足规范",
+                    
+                    # 整体稳定
+                    "Ks_limit": f"{factors['Ks']:.2f}",
+                    "xc": f"{gs_res['xc']:.1f}",
+                    "zc": f"{gs_res['zc']:.1f}",
+                    "R": f"{gs_res['R']:.1f}",
+                    "M_resist": f"{gs_res['M_resist']:.1f}",
+                    "M_drive": f"{gs_res['M_drive']:.1f}",
+                    "Ks_calc": f"{gs_res['Ks']:.3f}",
+                    "Ks_conclusion": "满足要求" if gs_res['Ks'] >= factors['Ks'] else "整体稳定性不足"
+                }
+                
+                # 2. 装载表格与图表 (水泥土墙只有2张图)
+                tables_to_export = {"slice_table": pd.DataFrame(gs_res['slices_data'])}
+                figs_to_export = {"plot_forces": fig1, "plot_global": fig3}
+                
+                template_file = "templates/cement_wall_template.docx"
+                
+                if not os.path.exists(template_file):
+                    st.error(f"找不到模板文件：{template_file}，请先在本地 templates 文件夹下创建！")
+                else:
+                    word_buffer = generate_docxtpl_report(
+                        template_path=template_file,
+                        context=context_data,
+                        tables=tables_to_export,
+                        figs=figs_to_export
+                    )
+                    
+                    st.download_button(
+                        label="✅ 计算书已生成！点击下载 .docx 文件",
+                        data=word_buffer,
+                        file_name=f"水泥土墙详细计算书_H{H0}m.docx",
+                        mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                    )
