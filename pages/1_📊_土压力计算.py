@@ -8,9 +8,11 @@ from core.soil_mechanics import calculate_earth_pressure
 from utils.config import init_global_state
 
 # 尝试导入我们之前写好的商业级导出引擎
-
-from utils.exporter import generate_docxtpl_report
-HAS_EXPORTER = True
+try:
+    from utils.exporter import generate_docxtpl_report
+    HAS_EXPORTER = True
+except ImportError:
+    HAS_EXPORTER = False
 
 st.set_page_config(page_title="土压力计算", layout="wide")
 
@@ -191,12 +193,12 @@ if not df_soil.empty:
             st.session_state.selected_layer = None
             st.rerun()
 
-    # ================= 5. Word 计算书导出 =================
+# ================= 5. Word 计算书导出 =================
     if HAS_EXPORTER:
         st.divider()
         st.subheader("📥 导出计算书")
         
-        # 组装动态土层详细计算过程数据
+        # 组装动态土层详细计算过程数据 (包含所有中间过程变量)
         export_layers = []
         for stat in layer_stats:
             export_layers.append({
@@ -204,41 +206,60 @@ if not df_soil.empty:
                 'name': stat['name'],
                 'top': f"{stat['top']:.2f}",
                 'bot': f"{stat['bot']:.2f}",
+                'dz': f"{stat['dz']:.2f}",
                 'gamma': f"{stat['gamma_nat']:.2f}",
                 'gamma_sat': f"{stat['gamma_sat']:.2f}",
                 'c': f"{stat['c']:.2f}",
                 'phi': f"{stat['phi']:.2f}",
                 'mode': stat['mode'],
+                
+                # 孔隙水压
                 'u_top': f"{stat['u_top']:.2f}",
                 'u_bot': f"{stat['u_bot']:.2f}",
+                
+                # 主动区中间变量
+                'sigma_a_top': f"{stat['sigma_a_top']:.2f}",
+                'sigma_a_bot': f"{stat['sigma_a_bot']:.2f}",
                 'Ka': f"{stat['Ka']:.3f}",
+                'ea_soil_top_uncapped': f"{stat['ea_soil_top_uncapped']:.2f}",
+                'ea_soil_bot_uncapped': f"{stat['ea_soil_bot_uncapped']:.2f}",
+                'has_tension': bool(stat['has_tension']),
+                'zc': f"{stat['zc']:.2f}",
                 'ea_top': f"{stat['ea_top']:.2f}",
                 'ea_bot': f"{stat['ea_bot']:.2f}",
                 'Ea': f"{stat['Ea']:.2f}",
                 'za': f"{stat['za']:.2f}" if stat['Ea'] > 0 else "-",
+                
+                # 被动区中间变量
                 'Kp': f"{stat['Kp']:.3f}",
+                'sigma_p_top': f"{stat['sigma_p_top']:.2f}",
+                'sigma_p_bot': f"{stat['sigma_p_bot']:.2f}",
+                'u_p_top': f"{stat['u_p_top']:.2f}",
+                'u_p_bot': f"{stat['u_p_bot']:.2f}",
                 'ep_top': f"{stat['ep_top']:.2f}",
                 'ep_bot': f"{stat['ep_bot']:.2f}",
+                'dz_p': f"{stat['dz_p']:.2f}",
                 'Ep': f"{stat['Ep']:.2f}",
                 'zp': f"{stat['zp']:.2f}" if stat['Ep'] > 0 else "-"
             })
 
-        if st.button("📄 基于模板生成", type="primary", use_container_width=True):
-            with st.spinner("正在将数据填入模板,请稍候..."):
+        if st.button("📄 基于模板生成精细计算书", type="primary", use_container_width=True):
+            with st.spinner("正在将公式与分层计算数据填入模板，请稍候..."):
                 context_data = {
                     "H0": f"{H0:.2f}",
                     "zw_out": f"{zw_out:.2f}",
                     "zw_in": f"{zw_in:.2f}",
                     "q": f"{q:.2f}",
-                    "layer_details": export_layers # <--- 把打包好的列表传给 Jinja2 引擎
+                    "layer_details": export_layers # 传入完整的列表供 Jinja2 渲染
                 }
                 
                 template_file = "templates/soil_pressure_template.docx"
                 
+                import os
                 if not os.path.exists(template_file):
                     st.error(f"找不到模板文件：{template_file}，请先在本地 templates 文件夹下创建！")
                 else:
-                    # 调用模板引擎，df_table 传空的，主要通过 context_data 循环
+                    # 调用模板引擎
                     word_buffer = generate_docxtpl_report(
                         template_path=template_file,
                         context=context_data,
@@ -249,6 +270,6 @@ if not df_soil.empty:
                     st.download_button(
                         label="✅ 计算书已生成！点击下载 .docx 文件",
                         data=word_buffer,
-                        file_name="土压力分布计算书.docx",
+                        file_name="土压力分布详细计算书.docx",
                         mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
                     )
