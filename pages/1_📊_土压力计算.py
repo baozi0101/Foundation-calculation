@@ -243,7 +243,7 @@ if not df_soil.empty:
                 'zp': f"{stat['zp']:.2f}" if stat['Ep'] > 0 else "-"
             })
 
-        if st.button("📄 基于模板生成精细计算书", type="primary", use_container_width=True):
+        if st.button("📄 基于模板生成计算书", type="primary", use_container_width=True):
             with st.spinner("正在将公式与分层计算数据填入模板，请稍候..."):
                 context_data = {
                     "H0": f"{H0:.2f}",
